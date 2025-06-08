@@ -24,18 +24,18 @@ def parse_cantidad_unidad(nombre_producto):
         return float(cantidad), unidad
     return 1, 'ud'
 
-def scrape_carrefour():
-    url = "https://www.carrefour.es/supermercado"
+def scrape_mercadona():
+    url = "https://www.mercadona.es/es/ofertas"
     headers = {"User-Agent": "Mozilla/5.0"}
     r = requests.get(url, headers=headers)
     r.raise_for_status()
     soup = BeautifulSoup(r.text, "html.parser")
 
-    productos_html = soup.select("article.product")  # Ajustar selector si cambia la web
+    productos_html = soup.select("div.product-item")  # Ajustar selector si cambia
     productos = []
     for p in productos_html:
-        nombre_tag = p.select_one("h2.product__name")
-        precio_tag = p.select_one("span.price__value")
+        nombre_tag = p.select_one("h3.product-item__title")
+        precio_tag = p.select_one("span.product-item__price-amount")
 
         if nombre_tag and precio_tag:
             nombre = nombre_tag.get_text(strip=True)
@@ -50,7 +50,7 @@ def scrape_carrefour():
 def scrape_and_upsert():
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    supermercado_nombre = "Carrefour"
+    supermercado_nombre = "Mercadona"
     res = supabase.from_('supermercado').select('id_supermercado').eq('nombre', supermercado_nombre).execute()
     if res.data:
         id_supermercado = res.data[0]['id_supermercado']
@@ -58,7 +58,7 @@ def scrape_and_upsert():
         res = supabase.from_('supermercado').insert({'nombre': supermercado_nombre}).select('id_supermercado').execute()
         id_supermercado = res.data[0]['id_supermercado']
 
-    productos = scrape_carrefour()
+    productos = scrape_mercadona()
 
     for nombre, precio in productos:
         cantidad, unidad = parse_cantidad_unidad(nombre)
