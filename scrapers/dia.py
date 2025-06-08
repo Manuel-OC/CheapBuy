@@ -1,120 +1,89 @@
+import re
 import requests
 from bs4 import BeautifulSoup
-import psycopg2
-import re
+from supabase import create_client
+from config import SUPABASE_URL, SUPABASE_KEY
 
-# Config DB (modifica según tu config)
-DB_HOST = 'localhost'
-DB_NAME = 'tu_db'
-DB_USER = 'tu_user'
-DB_PASS = 'tu_pass'
-
-# ID supermercado DIA (asegúrate que exista)
-ID_DIA = 2
-
-def connect_db():
-    return psycopg2.connect(host=DB_HOST, dbname=DB_NAME, user=DB_USER, password=DB_PASS)
-
-def upsert_producto(conn, nombre, cantidad, unidad):
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT id_producto FROM producto WHERE nombre=%s AND cantidad=%s AND unidad=%s
-    """, (nombre, cantidad, unidad))
-    res = cur.fetchone()
-    if res:
-        id_producto = res[0]
-    else:
-        cur.execute("""
-            INSERT INTO producto (nombre, cantidad, unidad) VALUES (%s, %s, %s) RETURNING id_producto
-        """, (nombre, cantidad, unidad))
-        id_producto = cur.fetchone()[0]
-        conn.commit()
-    cur.close()
-    return id_producto
-
-def upsert_supermercado_producto(conn, id_supermercado, id_producto, precio_unitario):
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO supermercadoproducto (id_supermercado, id_producto, precio_unitario)
-        VALUES (%s, %s, %s)
-        ON CONFLICT (id_supermercado, id_producto)
-        DO UPDATE SET precio_unitario = EXCLUDED.precio_unitario
-    """, (id_supermercado, id_producto, precio_unitario))
-    conn.commit()
-    cur.close()
-
-def parse_cantidad_unidad(text):
-    # Ejemplo: "500 g", "1,5 L", "12 uds", "1 kg"
-    # Convertir coma a punto para float
-    text = text.lower().replace(',', '.').strip()
-    match = re.match(r"([\d\.]+)\s*([a-z]+)", text)
+def parse_cantidad_unidad(nombre_producto):
+    match = re.search(r"(\d+(?:[.,]\d+)?)\s?(kg|g|l|ml|ud|unidad|unidad/es)?", nombre_producto, re.I)
     if match:
-        cantidad = float(match.group(1))
+        cantidad = match.group(1).replace(',', '.')
         unidad = match.group(2)
-        # Normaliza unidad, ej: "uds" -> "ud"
-        if unidad in ['uds', 'u', 'unidad', 'unidades']:
+        if unidad:
+            unidad = unidad.lower()
+            if unidad == 'g':
+                cantidad = float(cantidad) / 1000
+                unidad = 'kg'
+            elif unidad == 'ml':
+                cantidad = float(cantidad) / 1000
+                unidad = 'l'
+            elif unidad in ['ud', 'unidad', 'unidad/es']:
+                unidad = 'ud'
+        else:
             unidad = 'ud'
-        return cantidad, unidad
-    else:
-        # Por defecto, 1 ud
-        return 1.0, 'ud'
+        return float(cantidad), unidad
+    return 1, 'ud'
 
 def scrape_dia():
-    base_url = "https://www.dia.es"
-    url = f"{base_url}/supermercado/cat"
-
+    url = "https://www.dia.es/compra-online/supermercado/"
     headers = {"User-Agent": "Mozilla/5.0"}
+    r = requests.get(url, headers=headers)
+    r.raise_for_status()
+    soup = BeautifulSoup(r.text, "html.parser")
 
-    print("[DIA] Obteniendo página de categorías...")
-    res = requests.get(url, headers=headers)
-    if res.status_code != 200:
-        print(f"[DIA] Error: {res.status_code}")
-        return
+    # Ajusta selector según página actual
+    productos_html = soup.select("div.product-card")  
+    productos = []
+    for p in productos_html:
+        nombre_tag = p.select_one("div.product-card__name")
+        precio_tag = p.select_one("div.product-card__price")
 
-    soup = BeautifulSoup(res.text, 'html.parser')
-
-    # Ajustar selector según la web real (aquí ejemplo genérico)
-    categorias = soup.select("a.category-list__link")
-    print(f"[DIA] Categorías encontradas: {len(categorias)}")
-
-    conn = connect_db()
-
-    for cat in categorias:
-        nombre_cat = cat.get_text(strip=True)
-        url_cat = base_url + cat['href']
-        print(f"[DIA] Procesando categoría: {nombre_cat}")
-
-        res_cat = requests.get(url_cat, headers=headers)
-        if res_cat.status_code != 200:
-            print(f"[DIA] Error al obtener productos categoría {nombre_cat}: {res_cat.status_code}")
-            continue
-
-        soup_cat = BeautifulSoup(res_cat.text, 'html.parser')
-
-        productos = soup_cat.select("div.product-tile")
-        print(f"[DIA] Productos encontrados en {nombre_cat}: {len(productos)}")
-
-        for prod in productos:
+        if nombre_tag and precio_tag:
+            nombre = nombre_tag.get_text(strip=True)
+            precio_str = precio_tag.get_text(strip=True).replace('€', '').replace(',', '.').strip()
             try:
-                nombre = prod.select_one("a.product-tile__title").get_text(strip=True)
-                precio_text = prod.select_one("span.price").get_text(strip=True).replace('€', '').replace(',', '.').strip()
-                precio_unitario = float(precio_text)
+                precio = float(precio_str)
+                productos.append((nombre, precio))
+            except:
+                continue
+    return productos
 
-                # Intentar extraer cantidad y unidad del nombre o alguna clase - adaptar según HTML
-                # Ejemplo: "Leche Entera 1 L"
-                cant_unid_match = re.search(r"(\d+[,.]?\d*)\s*(kg|g|l|ml|ud|uds|unidad|unidades)", nombre.lower())
-                if cant_unid_match:
-                    cantidad, unidad = parse_cantidad_unidad(cant_unid_match.group(0))
-                else:
-                    cantidad, unidad = 1.0, 'ud'
+def scrape_and_upsert():
+    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-                id_producto = upsert_producto(conn, nombre, cantidad, unidad)
-                upsert_supermercado_producto(conn, ID_DIA, id_producto, precio_unitario)
-                print(f"  [DIA] Insertado: {nombre} | {cantidad}{unidad} | {precio_unitario}€")
-            except Exception as e:
-                print(f"[DIA] Error procesando producto: {e}")
+    supermercado_nombre = "Dia"
+    # Buscar o insertar supermercado
+    res = supabase.from_('supermercado').select('id_supermercado').eq('nombre', supermercado_nombre).execute()
+    if res.data:
+        id_supermercado = res.data[0]['id_supermercado']
+    else:
+        res = supabase.from_('supermercado').insert({'nombre': supermercado_nombre}).select('id_supermercado').execute()
+        id_supermercado = res.data[0]['id_supermercado']
 
-    conn.close()
+    productos = scrape_dia()
 
-if __name__ == "__main__":
-    scrape_dia()
+    for nombre, precio in productos:
+        cantidad, unidad = parse_cantidad_unidad(nombre)
+
+        # Buscar o insertar producto
+        res = supabase.from_('producto')\
+            .select('id_producto')\
+            .eq('nombre', nombre)\
+            .eq('cantidad', cantidad)\
+            .eq('unidad', unidad).execute()
+        if res.data:
+            id_producto = res.data[0]['id_producto']
+        else:
+            res = supabase.from_('producto').insert({
+                'nombre': nombre,
+                'cantidad': cantidad,
+                'unidad': unidad
+            }).select('id_producto').execute()
+            id_producto = res.data[0]['id_producto']
+
+        # Insertar o actualizar en supermercadoproducto
+        supabase.from_('supermercadoproducto').upsert({
+            'id_supermercado': id_supermercado,
+            'id_producto': id_producto,
+            'precio_unitario': precio
+        }).execute()
