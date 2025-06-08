@@ -1,12 +1,8 @@
 # updater.py
-from scrapers import (
-    mercadona, dia, carrefour, lidl, aldi, eroski,
-    hipercor, alcampo, eljamon, ahorramas
-)
+from scrapers import mercadona, dia, carrefour, alcampo
 
 def main():
-    for module in [mercadona, dia, carrefour, lidl, aldi, eroski,
-                   hipercor, alcampo, eljamon, ahorramas]:
+    for module in [mercadona, dia, carrefour]:
         try:
             module.scrape_and_upsert()
             print(f"[OK] {module.__name__}")
@@ -15,3 +11,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
