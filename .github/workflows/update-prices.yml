@@ -2,8 +2,8 @@ name: Ejecutar Scrapers Diario
 
 on:
   schedule:
-    - cron: '0 8 * * *' # Todos los días a las 08:00 UTC
-  workflow_dispatch:     # Permite ejecutarlo manualmente desde GitHub
+    - cron: '0 8 * * *'  # Todos los días a las 08:00 UTC
+  workflow_dispatch:      # Permite ejecutarlo manualmente
 
 jobs:
   run-scrapers:
@@ -25,3 +25,6 @@ jobs:
 
     - name: Ejecutar updater.py
       run: python updater.py
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
