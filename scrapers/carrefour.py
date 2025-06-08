@@ -1,114 +1,85 @@
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from webdriver_manager.chrome import ChromeDriverManager
-import time
-import psycopg2
 import re
+import requests
+from bs4 import BeautifulSoup
+from supabase import create_client
+from config import SUPABASE_URL, SUPABASE_KEY
 
-DB_HOST = 'localhost'
-DB_NAME = 'tu_db'
-DB_USER = 'tu_user'
-DB_PASS = 'tu_pass'
-
-ID_CARREFOUR = 3
-
-def connect_db():
-    return psycopg2.connect(host=DB_HOST, dbname=DB_NAME, user=DB_USER, password=DB_PASS)
-
-def upsert_producto(conn, nombre, cantidad, unidad):
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT id_producto FROM producto WHERE nombre=%s AND cantidad=%s AND unidad=%s
-    """, (nombre, cantidad, unidad))
-    res = cur.fetchone()
-    if res:
-        id_producto = res[0]
-    else:
-        cur.execute("""
-            INSERT INTO producto (nombre, cantidad, unidad) VALUES (%s, %s, %s) RETURNING id_producto
-        """, (nombre, cantidad, unidad))
-        id_producto = cur.fetchone()[0]
-        conn.commit()
-    cur.close()
-    return id_producto
-
-def upsert_supermercado_producto(conn, id_supermercado, id_producto, precio_unitario):
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO supermercadoproducto (id_supermercado, id_producto, precio_unitario)
-        VALUES (%s, %s, %s)
-        ON CONFLICT (id_supermercado, id_producto)
-        DO UPDATE SET precio_unitario = EXCLUDED.precio_unitario
-    """, (id_supermercado, id_producto, precio_unitario))
-    conn.commit()
-    cur.close()
-
-def parse_cantidad_unidad(text):
-    text = text.lower().replace(',', '.').strip()
-    match = re.match(r"([\d\.]+)\s*([a-z]+)", text)
+def parse_cantidad_unidad(nombre_producto):
+    match = re.search(r"(\d+(?:[.,]\d+)?)\s?(kg|g|l|ml|ud|unidad|unidad/es)?", nombre_producto, re.I)
     if match:
-        cantidad = float(match.group(1))
+        cantidad = match.group(1).replace(',', '.')
         unidad = match.group(2)
-        if unidad in ['uds', 'u', 'unidad', 'unidades']:
+        if unidad:
+            unidad = unidad.lower()
+            if unidad == 'g':
+                cantidad = float(cantidad) / 1000
+                unidad = 'kg'
+            elif unidad == 'ml':
+                cantidad = float(cantidad) / 1000
+                unidad = 'l'
+            elif unidad in ['ud', 'unidad', 'unidad/es']:
+                unidad = 'ud'
+        else:
             unidad = 'ud'
-        return cantidad, unidad
-    else:
-        return 1.0, 'ud'
+        return float(cantidad), unidad
+    return 1, 'ud'
 
 def scrape_carrefour():
-    options = Options()
-    options.add_argument("--headless")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--window-size=1920,1080")
+    url = "https://www.carrefour.es/supermercado"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    r = requests.get(url, headers=headers)
+    r.raise_for_status()
+    soup = BeautifulSoup(r.text, "html.parser")
 
-    driver = webdriver.Chrome(ChromeDriverManager().install(), options=options)
-    conn = connect_db()
+    productos_html = soup.select("article.product")  # Ajustar selector si cambia la web
+    productos = []
+    for p in productos_html:
+        nombre_tag = p.select_one("h2.product__name")
+        precio_tag = p.select_one("span.price__value")
 
-    try:
-        url = "https://www.carrefour.es/supermercado/cat"
-        print("[Carrefour] Accediendo a la web...")
-        driver.get(url)
-        time.sleep(5)
+        if nombre_tag and precio_tag:
+            nombre = nombre_tag.get_text(strip=True)
+            precio_str = precio_tag.get_text(strip=True).replace('€', '').replace(',', '.').strip()
+            try:
+                precio = float(precio_str)
+                productos.append((nombre, precio))
+            except:
+                continue
+    return productos
 
-        categorias = driver.find_elements(By.CSS_SELECTOR, "a.category-link")  # Ajusta el selector
-        print(f"[Carrefour] Categorías encontradas: {len(categorias)}")
+def scrape_and_upsert():
+    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-        for cat in categorias:
-            nombre_cat = cat.text.strip()
-            href = cat.get_attribute("href")
-            print(f"[Carrefour] Procesando categoría: {nombre_cat}")
+    supermercado_nombre = "Carrefour"
+    res = supabase.from_('supermercado').select('id_supermercado').eq('nombre', supermercado_nombre).execute()
+    if res.data:
+        id_supermercado = res.data[0]['id_supermercado']
+    else:
+        res = supabase.from_('supermercado').insert({'nombre': supermercado_nombre}).select('id_supermercado').execute()
+        id_supermercado = res.data[0]['id_supermercado']
 
-            driver.get(href)
-            time.sleep(5)
+    productos = scrape_carrefour()
 
-            productos = driver.find_elements(By.CSS_SELECTOR, "div.product-card")  # Ajusta selector
-            print(f"[Carrefour] Productos encontrados: {len(productos)}")
+    for nombre, precio in productos:
+        cantidad, unidad = parse_cantidad_unidad(nombre)
 
-            for prod in productos:
-                try:
-                    nombre = prod.find_element(By.CSS_SELECTOR, "a.product-card__title").text.strip()
-                    precio_text = prod.find_element(By.CSS_SELECTOR, "span.price").text.strip().replace('€', '').replace(',', '.')
-                    precio_unitario = float(precio_text)
+        res = supabase.from_('producto')\
+            .select('id_producto')\
+            .eq('nombre', nombre)\
+            .eq('cantidad', cantidad)\
+            .eq('unidad', unidad).execute()
+        if res.data:
+            id_producto = res.data[0]['id_producto']
+        else:
+            res = supabase.from_('producto').insert({
+                'nombre': nombre,
+                'cantidad': cantidad,
+                'unidad': unidad
+            }).select('id_producto').execute()
+            id_producto = res.data[0]['id_producto']
 
-                    # Extraer cantidad y unidad del nombre
-                    cant_unid_match = re.search(r"(\d+[,.]?\d*)\s*(kg|g|l|ml|ud|uds|unidad|unidades)", nombre.lower())
-                    if cant_unid_match:
-                        cantidad, unidad = parse_cantidad_unidad(cant_unid_match.group(0))
-                    else:
-                        cantidad, unidad = 1.0, 'ud'
-
-                    id_producto = upsert_producto(conn, nombre, cantidad, unidad)
-                    upsert_supermercado_producto(conn, ID_CARREFOUR, id_producto, precio_unitario)
-                    print(f"  [Carrefour] Insertado: {nombre} | {cantidad}{unidad} | {precio_unitario}€")
-
-                except Exception as e:
-                    print(f"[Carrefour] Error producto: {e}")
-
-    finally:
-        driver.quit()
-        conn.close()
-
-if __name__ == "__main__":
-    scrape_carrefour()
+        supabase.from_('supermercadoproducto').upsert({
+            'id_supermercado': id_supermercado,
+            'id_producto': id_producto,
+            'precio_unitario': precio
+        }).execute()
