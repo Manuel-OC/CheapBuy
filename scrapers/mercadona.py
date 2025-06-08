@@ -1,31 +1,78 @@
-# scrapers/mercadona.py
+# scrapers/mercadona_scraper.py
+
 import requests
+import time
+import sys
+import os
 from supabase import create_client
-from config import SUPABASE_URL, SUPABASE_KEY
 
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+# 👉 Permitir importar config.py desde el nivel superior
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+import config
 
-def scrape_and_upsert():
-    sname = "Mercadona"
+supabase = create_client(config.SUPABASE_URL, config.SUPABASE_KEY)
+
+def get_or_create_supermercado(nombre):
+    res = supabase.table("supermercado").select("id_supermercado").eq("nombre", nombre).execute()
+    if res.data:
+        return res.data[0]["id_supermercado"]
+    ins = supabase.table("supermercado").insert({"nombre": nombre}).execute()
+    return ins.data[0]["id_supermercado"]
+
+def get_or_create_producto(nombre, cantidad, unidad):
+    res = supabase.table("producto").select("id_producto").eq("nombre", nombre).eq("cantidad", cantidad).eq("unidad", unidad).execute()
+    if res.data:
+        return res.data[0]["id_producto"]
+    ins = supabase.table("producto").insert({"nombre": nombre, "cantidad": cantidad, "unidad": unidad}).execute()
+    return ins.data[0]["id_producto"]
+
+def upsert_supermercado_producto(id_supermercado, id_producto, precio_unitario):
+    supabase.table("supermercadoproducto").delete().eq("id_supermercado", id_supermercado).eq("id_producto", id_producto).execute()
+    supabase.table("supermercadoproducto").insert({
+        "id_supermercado": id_supermercado,
+        "id_producto": id_producto,
+        "precio_unitario": precio_unitario
+    }).execute()
+
+def parse_cantidad_unidad(nombre):
+    import re
+    cantidad = 1.0
+    unidad = "ud"
+    match = re.search(r"(\d+(?:[.,]\d+)?)(\s*)(kg|g|l|ml|ud|u|unidad)", nombre.lower())
+    if match:
+        cantidad = float(match.group(1).replace(",", "."))
+        unidad = match.group(3)
+        if unidad == "g":
+            cantidad /= 1000
+            unidad = "kg"
+        elif unidad == "ml":
+            cantidad /= 1000
+            unidad = "l"
+    return cantidad, unidad
+
+def scrap_mercadona():
+    print("📦 Iniciando scrapeo de productos Mercadona")
+    id_super = get_or_create_supermercado("Mercadona")
     url = "https://tienda.mercadona.es/api/categories/"
-    r = requests.get(url)
-    data = r.json()
-    sid = supabase.table("supermercado").upsert({"nombre": sname}, on_conflict="nombre").execute().data[0]["id_supermercado"]
-    for cat in data:
-        for sub in cat.get("categories", []):
-            for prod in sub.get("products", []):
-                nombre = prod["display_name"]
-                cantidad = float(prod.get("size", "1").split()[0])
-                unidad = prod.get("unit_size", "")
-                precio = float(prod["price_instructions"]["price"])
-                # Upsert product
-                p = supabase.table("producto").select("id_producto") \
-                    .eq("nombre", nombre).execute().data
-                if p:
-                    pid = p[0]["id_producto"]
-                else:
-                    pid = supabase.table("producto").insert({"nombre": nombre, "cantidad": cantidad, "unidad": unidad}).execute().data[0]["id_producto"]
-                # Upsert precio
-                supabase.table("supermercadoproducto").upsert({
-                    "id_supermercado": sid, "id_producto": pid, "precio_unitario": precio
-                }, on_conflict=["id_supermercado","id_producto"]).execute()
+    headers = {"User-Agent": "Mozilla/5.0"}
+
+    categorias = requests.get(url, headers=headers).json()
+    for cat in categorias:
+        if "categories" not in cat:
+            continue
+        for subcat in cat["categories"]:
+            products = subcat.get("products", [])
+            for product in products:
+                try:
+                    nombre = product["display_name"]
+                    precio = float(product["price_instructions"]["unit_price"])
+                    cantidad, unidad = parse_cantidad_unidad(nombre)
+                    id_producto = get_or_create_producto(nombre, cantidad, unidad)
+                    upsert_supermercado_producto(id_super, id_producto, precio)
+                    print(f"✅ {nombre} - {precio}€")
+                    time.sleep(0.1)
+                except Exception as e:
+                    print(f"⚠️ Error en producto: {e}")
+
+if __name__ == "__main__":
+    scrap_mercadona()
