@@ -4,3 +4,4 @@ lxml
 selenium
 supabase
 python-dotenv
+webdriver-manager
