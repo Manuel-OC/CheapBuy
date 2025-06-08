@@ -1,7 +1,6 @@
 requests
-httpx
 beautifulsoup4
 lxml
-python-dotenv
-supabase
 selenium
+supabase
+python-dotenv
