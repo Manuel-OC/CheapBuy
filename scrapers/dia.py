@@ -69,5 +69,8 @@ def scrap_dia():
         except Exception as e:
             print(f"Error producto DIA: {e}")
 
+def scrape_and_upsert():
+    scrap_dia()
+
 if __name__ == "__main__":
     scrap_dia()
