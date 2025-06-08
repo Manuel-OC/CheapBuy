@@ -1,7 +1,7 @@
-from scrapers import mercadona, dia, carrefour
+from scrapers import  carrefour
 
 def main():
-    for module in [mercadona, dia, carrefour]:
+    for module in [carrefour]:
         try:
             module.scrape_and_upsert()
             print(f"[OK] {module.__name__}")
