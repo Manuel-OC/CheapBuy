@@ -1,5 +1,4 @@
-# updater.py
-from scrapers import mercadona, dia, carrefour, alcampo
+from scrapers import mercadona, dia, carrefour
 
 def main():
     for module in [mercadona, dia, carrefour]:
@@ -11,4 +10,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
