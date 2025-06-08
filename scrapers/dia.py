@@ -1,89 +1,63 @@
-import re
 import requests
 from bs4 import BeautifulSoup
 from supabase import create_client
 from config import SUPABASE_URL, SUPABASE_KEY
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                  "AppleWebKit/537.36 (KHTML, like Gecko) "
-                  "Chrome/114.0.0.0 Safari/537.36",
-    "Accept-Language": "es-ES,es;q=0.9",
-}
-
-def parse_cantidad_unidad(nombre_producto):
-    match = re.search(r"(\d+(?:[.,]\d+)?)\s?(kg|g|l|ml|ud|unidad|unidad/es)?", nombre_producto, re.I)
-    if match:
-        cantidad = match.group(1).replace(',', '.')
-        unidad = match.group(2)
-        if unidad:
-            unidad = unidad.lower()
-            if unidad == 'g':
-                cantidad = float(cantidad) / 1000
-                unidad = 'kg'
-            elif unidad == 'ml':
-                cantidad = float(cantidad) / 1000
-                unidad = 'l'
-            elif unidad in ['ud', 'unidad', 'unidad/es']:
-                unidad = 'ud'
-        else:
-            unidad = 'ud'
-        return float(cantidad), unidad
-    return 1.0, 'ud'
-
-def scrape_dia():
-    url = "https://www.dia.es/compra-online/supermercado/"
-    r = requests.get(url, headers=HEADERS)
-    r.raise_for_status()
-    soup = BeautifulSoup(r.text, "html.parser")
-
-    productos_html = soup.select("article.product-list-item")
-    productos = []
-    for p in productos_html:
-        nombre_tag = p.select_one("h2.product-name")
-        precio_tag = p.select_one("span.product-price__price")
-        if nombre_tag and precio_tag:
-            nombre = nombre_tag.get_text(strip=True)
-            precio_str = precio_tag.get_text(strip=True).replace('€', '').replace(',', '.').strip()
-            try:
-                precio = float(precio_str)
-                productos.append((nombre, precio))
-            except:
-                continue
-    return productos
-
-def get_or_create_supermercado(supabase, nombre):
-    res = supabase.table("supermercado").select("id_supermercado").eq("nombre", nombre).execute()
+def get_or_create_supermercado(supabase):
+    data = [{"nombre": "Dia"}]
+    res = supabase.table("supermercado").upsert(data, on_conflict="nombre").execute()
     if res.data:
         return res.data[0]["id_supermercado"]
-    else:
-        res = supabase.table("supermercado").insert({"nombre": nombre}).select("id_supermercado").execute()
-        return res.data[0]["id_supermercado"]
+    raise Exception("No se pudo crear o obtener Dia")
 
 def scrape_and_upsert():
-    print("📦 Iniciando scrapeo de productos Dia")
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-    id_supermercado = get_or_create_supermercado(supabase, "Dia")
-    productos = scrape_dia()
+    id_supermercado = get_or_create_supermercado(supabase)
 
-    for nombre, precio in productos:
-        cantidad, unidad = parse_cantidad_unidad(nombre)
+    url = "https://www.dia.es/compra-online"
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+    r = requests.get(url, headers=headers)
+    if r.status_code != 200:
+        raise Exception(f"Error accediendo a DIA: {r.status_code}")
 
-        res = supabase.table("producto").select("id_producto")\
-            .eq("nombre", nombre).eq("cantidad", cantidad).eq("unidad", unidad).execute()
-        if res.data:
-            id_producto = res.data[0]["id_producto"]
-        else:
-            res = supabase.table("producto").insert({
+    soup = BeautifulSoup(r.text, "lxml")
+
+    productos = []
+    items = soup.select("div.product-item")  # Ajusta selector según web
+
+    for item in items:
+        try:
+            nombre = item.select_one("h3.product-title").text.strip()
+            precio_text = item.select_one("span.price").text.strip().replace("€", "").replace(",", ".")
+            precio = float(precio_text)
+            cantidad_text = item.select_one("span.quantity").text.strip()
+            cantidad, unidad = cantidad_text.split(" ", 1)
+            cantidad = float(cantidad.replace(",", "."))
+            productos.append({
                 "nombre": nombre,
                 "cantidad": cantidad,
-                "unidad": unidad
-            }).select("id_producto").execute()
-            id_producto = res.data[0]["id_producto"]
+                "unidad": unidad,
+                "precio_unitario": precio
+            })
+        except Exception:
+            continue
 
-        supabase.table("supermercadoproducto").upsert({
-            "id_supermercado": id_supermercado,
-            "id_producto": id_producto,
-            "precio_unitario": precio
-        }).execute()
-    print("✅ Dia actualizado")
+    for prod in productos:
+        res_prod = supabase.table("producto").upsert(
+            [{"nombre": prod["nombre"], "cantidad": prod["cantidad"], "unidad": prod["unidad"]}],
+            on_conflict="nombre"
+        ).execute()
+        if not res_prod.data:
+            continue
+        id_producto = res_prod.data[0]["id_producto"]
+
+        supabase.table("supermercadoproducto").upsert(
+            [{
+                "id_supermercado": id_supermercado,
+                "id_producto": id_producto,
+                "precio_unitario": prod["precio_unitario"]
+            }],
+            on_conflict=["id_supermercado", "id_producto"]
+        ).execute()
