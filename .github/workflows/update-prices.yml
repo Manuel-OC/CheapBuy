@@ -3,7 +3,7 @@ name: Ejecutar Scrapers Diario
 on:
   schedule:
     - cron: '0 8 * * *'  # Todos los días a las 08:00 UTC
-  workflow_dispatch:      # Permite ejecutarlo manualmente
+  workflow_dispatch:
 
 jobs:
   run-scrapers:
@@ -23,11 +23,13 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Instalar Chrome
+    - name: Instalar Google Chrome
       uses: browser-actions/setup-chrome@v1
 
     - name: Instalar ChromeDriver
-      uses: browser-actions/setup-chromedriver@v1
+      uses: nanasess/setup-chromedriver@v1
+      with:
+        chromedriver-version: 'latest'
 
     - name: Ejecutar updater.py
       run: python updater.py
