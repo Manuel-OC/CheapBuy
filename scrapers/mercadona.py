@@ -74,5 +74,8 @@ def scrap_mercadona():
                 except Exception as e:
                     print(f"⚠️ Error en producto: {e}")
 
+def scrape_and_upsert():
+    scrap_mercadona()
+
 if __name__ == "__main__":
     scrap_mercadona()
