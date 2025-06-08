@@ -1,15 +1,10 @@
-import re
-import requests
-from bs4 import BeautifulSoup
 from supabase import create_client
 from config import SUPABASE_URL, SUPABASE_KEY
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                  "AppleWebKit/537.36 (KHTML, like Gecko) "
-                  "Chrome/114.0.0.0 Safari/537.36",
-    "Accept-Language": "es-ES,es;q=0.9",
-}
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+import time
+import re
 
 def parse_cantidad_unidad(nombre_producto):
     match = re.search(r"(\d+(?:[.,]\d+)?)\s?(kg|g|l|ml|ud|unidad|unidad/es)?", nombre_producto, re.I)
@@ -31,28 +26,6 @@ def parse_cantidad_unidad(nombre_producto):
         return float(cantidad), unidad
     return 1.0, 'ud'
 
-def scrape_carrefour():
-    url = "https://www.carrefour.es/supermercado/"
-    r = requests.get(url, headers=HEADERS)
-    r.raise_for_status()
-    soup = BeautifulSoup(r.text, "html.parser")
-
-    productos_html = soup.select("div.product-card")
-    productos = []
-    for p in productos_html:
-        nombre_tag = p.select_one("div.product-card__name")
-        precio_tag = p.select_one("div.product-card__price")
-
-        if nombre_tag and precio_tag:
-            nombre = nombre_tag.get_text(strip=True)
-            precio_str = precio_tag.get_text(strip=True).replace('€', '').replace(',', '.').strip()
-            try:
-                precio = float(precio_str)
-                productos.append((nombre, precio))
-            except:
-                continue
-    return productos
-
 def get_or_create_supermercado(supabase, nombre):
     res = supabase.table("supermercado").select("id_supermercado").eq("nombre", nombre).execute()
     if res.data:
@@ -62,14 +35,33 @@ def get_or_create_supermercado(supabase, nombre):
         return res.data[0]["id_supermercado"]
 
 def scrape_and_upsert():
-    print("📦 Iniciando scrapeo de productos Carrefour")
+    print("📦 Iniciando scrapeo de productos Carrefour (Selenium)")
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
     id_supermercado = get_or_create_supermercado(supabase, "Carrefour")
-    productos = scrape_carrefour()
 
-    for nombre, precio in productos:
-        cantidad, unidad = parse_cantidad_unidad(nombre)
+    options = Options()
+    options.headless = True
+    driver = webdriver.Chrome(options=options)
 
+    driver.get("https://www.carrefour.es/supermercado/")
+    time.sleep(5)
+
+    productos = []
+    cards = driver.find_elements(By.CSS_SELECTOR, "article.product")
+    for c in cards:
+        try:
+            nombre = c.find_element(By.CSS_SELECTOR, "h3.product-title").text.strip()
+            precio_str = c.find_element(By.CSS_SELECTOR, "span.price-integer").text.strip()
+            decimales = c.find_element(By.CSS_SELECTOR, "span.price-decimals").text.strip()
+            precio = float(precio_str + "." + decimales)
+            cantidad, unidad = parse_cantidad_unidad(nombre)
+            productos.append((nombre, precio, cantidad, unidad))
+        except Exception as e:
+            continue
+
+    driver.quit()
+
+    for nombre, precio, cantidad, unidad in productos:
         res = supabase.table("producto").select("id_producto")\
             .eq("nombre", nombre).eq("cantidad", cantidad).eq("unidad", unidad).execute()
         if res.data:
@@ -87,4 +79,5 @@ def scrape_and_upsert():
             "id_producto": id_producto,
             "precio_unitario": precio
         }).execute()
+
     print("✅ Carrefour actualizado")
