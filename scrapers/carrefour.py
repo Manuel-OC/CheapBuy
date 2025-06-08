@@ -14,8 +14,8 @@ def get_driver():
     options.add_argument("--disable-gpu")
 
     # Añade un directorio temporal para evitar conflictos con perfiles
-    user_data_dir = tempfile.mkdtemp()
-    options.add_argument(f"--user-data-dir={user_data_dir}")
+    #user_data_dir = tempfile.mkdtemp()
+    #options.add_argument(f"--user-data-dir={user_data_dir}")
 
     return webdriver.Chrome(options=options)
 
