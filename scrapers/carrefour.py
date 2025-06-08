@@ -1,49 +1,73 @@
 import requests
 from bs4 import BeautifulSoup
 from supabase import create_client
-from config import SUPABASE_URL, SUPABASE_KEY
+import re
+import time
+import config  # Importa tu config.py
 
+SUPABASE_URL = config.SUPABASE_URL
+SUPABASE_KEY = config.SUPABASE_KEY
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-def scrape_and_upsert():
-    sname = "Carrefour"
-    sid = supabase.table("supermercado").upsert(
-        {"nombre": sname},
-        on_conflict="nombre"
-    ).execute().data[0]["id_supermercado"]
+def get_or_create_supermercado(nombre):
+    res = supabase.table("supermercado").select("id_supermercado").eq("nombre", nombre).execute()
+    if res.data:
+        return res.data[0]["id_supermercado"]
+    ins = supabase.table("supermercado").insert({"nombre": nombre}).execute()
+    return ins.data[0]["id_supermercado"]
 
-    base_url = "https://www.carrefour.es/supermercado/search"
-    queries = ["leche", "pan", "huevos"]  # añade más categorías
+def get_or_create_producto(nombre, cantidad, unidad):
+    res = supabase.table("producto").select("id_producto").eq("nombre", nombre).eq("cantidad", cantidad).eq("unidad", unidad).execute()
+    if res.data:
+        return res.data[0]["id_producto"]
+    ins = supabase.table("producto").insert({"nombre": nombre, "cantidad": cantidad, "unidad": unidad}).execute()
+    return ins.data[0]["id_producto"]
 
-    for q in queries:
-        params = {"q": q}
-        r = requests.get(base_url, params=params)
-        soup = BeautifulSoup(r.text, "html.parser")
-        items = soup.select(".product-card")
+def upsert_supermercado_producto(id_supermercado, id_producto, precio_unitario):
+    supabase.table("supermercadoproducto").delete().eq("id_supermercado", id_supermercado).eq("id_producto", id_producto).execute()
+    supabase.table("supermercadoproducto").insert({
+        "id_supermercado": id_supermercado,
+        "id_producto": id_producto,
+        "precio_unitario": precio_unitario
+    }).execute()
 
-        for c in items:
-            nombre = c.select_one(".product-card__title").text.strip()
-            precio = c.select_one(".product-card__price").text.strip().replace("€", "").replace(",", ".")
+def scrap_carrefour():
+    nombre_super = "Carrefour"
+    id_super = get_or_create_supermercado(nombre_super)
+
+    url = "https://www.carrefour.es/supermercado/"
+
+    headers = {"User-Agent": "Mozilla/5.0"}
+    r = requests.get(url, headers=headers)
+    soup = BeautifulSoup(r.text, "html.parser")
+
+    productos = soup.select(".product-list-item")  # Selector que puede cambiar, revisa en la web
+
+    for p in productos:
+        try:
+            nombre = p.select_one(".product-title").text.strip()
+            precio_text = p.select_one(".product-price").text.strip().replace("€", "").replace(",", ".")
+            precio = float(precio_text)
+
             cantidad = 1.0
             unidad = "ud"
+            match = re.search(r"(\d+[\.,]?\d*)\s*(kg|g|l|ml|ud|unidad|u)", nombre, re.I)
+            if match:
+                cantidad = float(match.group(1).replace(",", "."))
+                unidad = match.group(2).lower()
+                if unidad == "g":
+                    cantidad /= 1000
+                    unidad = "kg"
+                if unidad == "ml":
+                    cantidad /= 1000
+                    unidad = "l"
 
-            upsert_product(nombre, cantidad, unidad, precio, sid)
+            id_producto = get_or_create_producto(nombre, cantidad, unidad)
+            upsert_supermercado_producto(id_super, id_producto, precio)
+            print(f"Insertado {nombre} - {precio}€")
+            time.sleep(0.2)
+        except Exception as e:
+            print(f"Error producto Carrefour: {e}")
 
-    print(f"[OK] Carrefour completado")
-
-def upsert_product(nombre, cantidad, unidad, precio, sid):
-    res = supabase.table("producto").select("id_producto").eq("nombre", nombre).execute().data
-    if res:
-        pid = res[0]["id_producto"]
-    else:
-        pid = supabase.table("producto").insert({
-            "nombre": nombre,
-            "cantidad": cantidad,
-            "unidad": unidad
-        }).execute().data[0]["id_producto"]
-
-    supabase.table("supermercadoproducto").upsert({
-        "id_supermercado": sid,
-        "id_producto": pid,
-        "precio_unitario": float(precio)
-    }, on_conflict=["id_supermercado", "id_producto"]).execute()
+if __name__ == "__main__":
+    scrap_carrefour()
