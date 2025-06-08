@@ -37,12 +37,11 @@ def scrape_dia():
     r.raise_for_status()
     soup = BeautifulSoup(r.text, "html.parser")
 
-    productos_html = soup.select("div.product-card")
+    productos_html = soup.select("article.product-list-item")
     productos = []
     for p in productos_html:
-        nombre_tag = p.select_one("div.product-card__name")
-        precio_tag = p.select_one("div.product-card__price")
-
+        nombre_tag = p.select_one("h2.product-name")
+        precio_tag = p.select_one("span.product-price__price")
         if nombre_tag and precio_tag:
             nombre = nombre_tag.get_text(strip=True)
             precio_str = precio_tag.get_text(strip=True).replace('€', '').replace(',', '.').strip()
