@@ -69,5 +69,8 @@ def scrap_carrefour():
         except Exception as e:
             print(f"Error producto Carrefour: {e}")
 
+def scrape_and_upsert():
+    scrap_carrefour()
+
 if __name__ == "__main__":
     scrap_carrefour()
