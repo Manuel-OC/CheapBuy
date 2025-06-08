@@ -100,7 +100,7 @@ def scrape_category(driver, url):
     print(f"➡️ {len(productos)} productos encontrados")
     return productos
 
-def scrape_and_upload_carrefour():
+def scrape_and_upload():
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
     id_supermercado = get_or_create_supermercado(supabase)
     driver = get_driver()
@@ -119,5 +119,5 @@ def scrape_and_upload_carrefour():
         print("✅ Scraping completado y datos subidos a Supabase.")
 
 # Ejecutar
-scrape_and_upload_carrefour()
+scrape_and_upload()
 
