@@ -5,19 +5,19 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from supabase import create_client
 from config import SUPABASE_URL, SUPABASE_KEY
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 
 def get_driver():
     options = Options()
-    options.add_argument("--headless")
+    options.add_argument("--headless")  # Si lo necesitas en entorno sin interfaz
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
+    # No usar user-data-dir para evitar errores de sesión
 
-    # Añade un directorio temporal para evitar conflictos con perfiles
-    #user_data_dir = tempfile.mkdtemp()
-    #options.add_argument(f"--user-data-dir={user_data_dir}")
-
-    return webdriver.Chrome(options=options)
+    service = Service(ChromeDriverManager().install())
+    return webdriver.Chrome(service=service, options=options)
 
 def scroll_to_bottom(driver):
     last_height = driver.execute_script("return document.body.scrollHeight")
