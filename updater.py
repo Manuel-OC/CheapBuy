@@ -2,18 +2,14 @@
 import os
 import sys
 
-# 👉 Añadir la ruta actual al sys.path
-sys.path.append(os.path.join(os.path.dirname(__file__), "scrapers"))
+# Añadir la carpeta scrapers al path
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+SCRAPERS_PATH = os.path.join(CURRENT_DIR, "scrapers")
+sys.path.insert(0, SCRAPERS_PATH)
 
-from scraper_dia import scrape_dia  # Sin el prefijo "scrapers."
-
-def main():
-    print("▶️ Iniciando updater.py")
-
-    data = scrape_dia()
-    print(f"📝 Productos encontrados: {len(data)}")
-    for item in data[:5]:  # mostramos los primeros 5 como prueba
-        print(" -", item)
+from scraper_dia import scrape_dia
 
 if __name__ == "__main__":
-    main()
+    print("Iniciando actualización diaria...")
+    scrape_dia()
+    print("Actualización completada.")
