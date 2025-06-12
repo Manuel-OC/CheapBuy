@@ -232,5 +232,7 @@ def scrape_dia():
                 u = precio_u.get_text(strip=True).replace("€", "").replace(",", ".")
                 r = precio_r.get_text(strip=True).replace("€/", "").replace(",", ".") if precio_r else None
                 items.append((p, float(u), float(r) if r else None))
+    print("Finished scraping")
+    print(f"Found {len(items)} products")
     return items
 
