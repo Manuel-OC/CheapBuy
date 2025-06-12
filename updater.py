@@ -1,25 +1,22 @@
-from config import SUPABASE_URL, SUPABASE_KEY
+from config import DATABASE_URL, SUPER_MAP
 from scrapers.dia_scraper import scrape_dia
-from supabase import create_client
-
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+import psycopg2
 
 def main():
+    conn = psycopg2.connect(DATABASE_URL, sslmode="require")
+    cur = conn.cursor()
+    supermercado_id = 1  # O puedes mapear desde SUPER_MAP si usas nombres
+
     data = scrape_dia()
     for nombre, precio_u, precio_r in data:
-        # Obtener o insertar producto
-        res = supabase.table("producto").select("id_producto").eq("nombre", nombre).execute()
-        if res.data:
-            id_producto = res.data[0]["id_producto"]
-        else:
-            ins = supabase.table("producto").insert({"nombre": nombre}).execute()
-            id_producto = ins.data[0]["id_producto"]
-
-        # Insertar o actualizar precio
-        supabase.table("supermercadoproducto").upsert({
-            "id_supermercado": 1,
-            "id_producto": id_producto,
-            "precio_unitario": precio_u,
-            "precio_relativo": precio_r or 0
-        }).execute()
-
+        cur.execute("INSERT INTO producto (nombre) VALUES (%s) ON CONFLICT (nombre) DO UPDATE SET nombre=EXCLUDED.nombre RETURNING id_producto", (nombre,))
+        id_producto = cur.fetchone()[0]
+        cur.execute("""
+            INSERT INTO supermercadoproducto (id_supermercado, id_producto, precio_unitario, precio_relativo)
+            VALUES (%s,%s,%s,%s)
+            ON CONFLICT (id_supermercado, id_producto)
+            DO UPDATE SET precio_unitario = EXCLUDED.precio_unitario, precio_relativo = EXCLUDED.precio_relativo
+        """, (supermercado_id, id_producto, precio_u, precio_r or 0))
+    conn.commit()
+    cur.close()
+    conn.close()
