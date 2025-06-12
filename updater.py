@@ -1,5 +1,5 @@
 import os
-from scrapers.dia_scraper.py import scrape_dia
+from scrapers.dia_scraper import scrape_dia
 from supabase import create_client
 
 def main():
