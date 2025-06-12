@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 import os
-from scrapers.scraper_dia import scrape_dia      # Import corregido
+import sys
+
+# 👉 Añadir la ruta actual al sys.path
+sys.path.append(os.path.join(os.path.dirname(__file__), "scrapers"))
+
+from scraper_dia import scrape_dia  # Sin el prefijo "scrapers."
 
 def main():
     print("▶️ Iniciando updater.py")
