@@ -1,24 +1,25 @@
-from config import SUPABASE_URL, SUPABASE_KEY
-from scrapers.dia_scraper import scrape_dia
+import os
+from dia_scraper import scrape_dia
 from supabase import create_client
 
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
 def main():
-    data = scrape_dia()
-    for nombre, precio_u, precio_r in data:
-        # Obtener o insertar producto
-        res = supabase.table("producto").select("id_producto").eq("nombre", nombre).execute()
-        if res.data:
-            id_producto = res.data[0]["id_producto"]
-        else:
-            ins = supabase.table("producto").insert({"nombre": nombre}).execute()
-            id_producto = ins.data[0]["id_producto"]
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_KEY")
 
-        # Insertar o actualizar precio
-        supabase.table("supermercadoproducto").upsert({
-            "id_supermercado": 1,
-            "id_producto": id_producto,
-            "precio_unitario": precio_u,
-            "precio_relativo": precio_r or 0
-        }).execute()
+    print(f"Supabase URL: {supabase_url}")
+    if not supabase_url or not supabase_key:
+        print("❌ ERROR: Supabase credentials not found.")
+        return
+
+    supabase = create_client(supabase_url, supabase_key)
+    data = scrape_dia()
+
+    print(f"Scraped {len(data)} products")
+
+    for product in data:
+        print(f"Inserting: {product}")
+        try:
+            response = supabase.table("precios_dia").insert(product).execute()
+            print(f"✅ Inserted: {response}")
+        except Exception as e:
+            print(f"❌ Failed to insert: {e}")
