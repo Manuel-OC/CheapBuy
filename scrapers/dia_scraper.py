@@ -219,20 +219,21 @@ URLS = [
 
 def scrape_dia():
     items = []
+    print("🔄 Scrapeando URLs:", len(URLS))
     for url in URLS:
+        print(" ▶️ fetch:", url)
         resp = requests.get(url)
-        resp.raise_for_status()
+        if not resp.ok:
+            print(" ❌ Error request:", resp.status_code)
+            continue
         doc = BeautifulSoup(resp.text, "html.parser")
-        for card in doc.select(".search-product-card"):
-            nombre = card.select_one(".search-product-card__product-name")
-            precio_u = card.select_one(".search-product-card__active-price")
-            precio_r = card.select_one(".search-product-card__price-per-unit")
-            if nombre and precio_u:
-                p = nombre.get_text(strip=True)
-                u = precio_u.get_text(strip=True).replace("€", "").replace(",", ".")
-                r = precio_r.get_text(strip=True).replace("€/", "").replace(",", ".") if precio_r else None
-                items.append((p, float(u), float(r) if r else None))
-    print("Finished scraping")
-    print(f"Found {len(items)} products")
+        cards = doc.select(".search-product-card")
+        print(f"   Encontradas {len(cards)} tarjetas")
+        for card in cards:
+            nombre_tag = card.select_one(".search-product-card__product-name")
+            precio_tag = card.select_one(".search-product-card__active-price")
+            if nombre_tag and precio_tag:
+                nombre = nombre_tag.get_text(strip=True)
+                precio = precio_tag.get_text(strip=True).replace("€", "").replace(",", ".")
+                items.append((nombre, float(precio)))
     return items
-
