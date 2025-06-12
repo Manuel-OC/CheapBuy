@@ -1,7 +1,4 @@
 requests
 beautifulsoup4
-lxml
-selenium
-supabase
+psycopg2-binary
 python-dotenv
-webdriver-manager
