@@ -24,7 +24,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Ejecutar actualizarbd.sh
+      - name: Ejecutar actualizarcsv.sh
         run: |
-          chmod +x actualizarbd.sh
-          ./actualizarbd.sh
+          chmod +x actualizarcsv.sh
+          ./actualizarcsv.sh
+      
+      - name: Ejecutar importarcsvabd.py
+        run: python3 importarcsvabd.py
