@@ -42,6 +42,10 @@ def scrape_url(url):
 			unidad = tarjeta.find('p', class_='search-product-card__price-per-unit')
 
 			nombre_texto = nombre.get_text(strip=True) if nombre else "None"
+
+			nombre_texto = nombre_texto.lower()
+			nombre_texto = nombre_texto.replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
+			
 			precio_texto = limpiar_valor(precio.get_text(strip=True)) if precio else 99999
 			unidad_texto = limpiar_valor(unidad.get_text(strip=True)) if unidad else 99999
 
