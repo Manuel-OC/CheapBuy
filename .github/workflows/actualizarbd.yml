@@ -25,3 +25,9 @@ jobs:
         run: |
               chmod 777 actualizarbd.sh
               ./actualizarbd.sh
+      - name: Ejecutar importarcsv.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}        
+        run: python3 importarcsv.py
+
