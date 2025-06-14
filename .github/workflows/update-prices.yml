@@ -1,8 +1,8 @@
-name: Daily DIA Scraper
+name: Actualiza BD a dirario
 
 on:
   schedule:
-    - cron: "0 6 * * *"
+    - cron: "0 1 * * *"
   workflow_dispatch:
 
 jobs:
@@ -21,5 +21,5 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Ejecutar updater.py
-        run: python updater.py
+      - name: Ejecutar actualizarbd.sh
+        run: actualizarbd.sh
