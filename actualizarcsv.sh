@@ -11,5 +11,5 @@ php ./scrapers/mercadona.php >> cheapbuy.csv
 echo "MERCADONA SCRAPEADO!"
 
 echo "SCRAPEANDO CARREFOUR..."
-#python3 ./scrapers/carrefour.py >> cheapbuy.csv
+python3 ./scrapers/carrefour.py >> cheapbuy.csv
 echo "CARREFOUR SCRAPEADO!"
