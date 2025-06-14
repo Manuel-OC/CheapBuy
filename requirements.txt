@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pandas
+supabase
+httpx
+python-dotenv
+selenium
+webdriver-manager
+pandas
+supabase
+psutil
