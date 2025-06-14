@@ -9,3 +9,4 @@ webdriver-manager
 pandas
 supabase
 psutil
+bs4
