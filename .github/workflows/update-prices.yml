@@ -22,4 +22,6 @@ jobs:
           pip install -r requirements.txt
 
       - name: Ejecutar actualizarbd.sh
-        run: ./actualizarbd.sh
+        run: |
+              chmod 777 actualizarbd.sh
+              ./actualizarbd.sh
