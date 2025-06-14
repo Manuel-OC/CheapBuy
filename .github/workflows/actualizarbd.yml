@@ -1,4 +1,4 @@
-name: Actualiza BD a dirario
+name: Actualiza BD a diario
 
 on:
   schedule:
@@ -8,6 +8,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
 
     steps:
       - uses: actions/checkout@v3
@@ -23,11 +26,5 @@ jobs:
 
       - name: Ejecutar actualizarbd.sh
         run: |
-              chmod 777 actualizarbd.sh
-              ./actualizarbd.sh
-      - name: Ejecutar importarcsv.py
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}        
-        run: python3 importarcsv.py
-
+          chmod +x actualizarbd.sh
+          ./actualizarbd.sh
