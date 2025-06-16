@@ -14,7 +14,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:81/TFG/frontend.html"],  # Cambia a tu frontend real
+    allow_origins=["http://localhost:81/TFG/frontend.html"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
