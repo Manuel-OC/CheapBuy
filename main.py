@@ -35,7 +35,7 @@ async def buscar_productos(request: ProductosRequest) -> List[Dict]:
     for termino in request.nombres:
         q = supabase.table("producto") \
             .select(f"idproducto,nombreproducto,{campo_precio},supermercado(nombresupermercado)") \
-            .ilike("nombreproducto", f"{termino} %")
+            .ilike("nombreproducto", f"%{termino}%")
 
         if request.supermercados:
             q = q.in_("idsupermercado", request.supermercados)
