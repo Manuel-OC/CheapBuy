@@ -14,7 +14,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # O especifica tu dominio: ["https://tusitio.com"]
+    allow_origins=["http://localhost:81/TFG/frontend.html"],  # Cambia a tu frontend real
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
