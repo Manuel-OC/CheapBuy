@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-FRONTEND = od.getenv("FRONTEND")
+FRONTEND = os.getenv("FRONTEND")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
